@@ -53,6 +53,18 @@ function Test-AuthPresent {
   return -not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)
 }
 
+function Get-CurrentApiKey {
+  if (-not [string]::IsNullOrWhiteSpace($script:SessionApiKey)) {
+    return $script:SessionApiKey
+  }
+
+  if (Test-AuthPresent) {
+    return $env:OPENAI_API_KEY
+  }
+
+  return ''
+}
+
 function Set-Statuses {
   $script:NodeStatus = if (Test-CommandExists 'node') { 'installed' } else { 'missing' }
   $script:NpmStatus = if (Test-CommandExists 'npm') { 'installed' } else { 'missing' }
@@ -238,6 +250,74 @@ function Prompt-Auth {
   $script:Changed = $true
 }
 
+function Write-TextFileUtf8 {
+  param(
+    [string]$Path,
+    [string]$Content
+  )
+
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
+function Write-CodexFiles {
+  $codexDir = Join-Path $env:USERPROFILE '.codex'
+  $configPath = Join-Path $codexDir 'config.toml'
+  $authPath = Join-Path $codexDir 'auth.json'
+  $createdAny = $false
+
+  if (-not (Test-Path $codexDir)) {
+    New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
+  }
+
+  if (Test-Path $configPath) {
+    Write-Log "$configPath 已存在，默认跳过。"
+  } else {
+    $configContent = @'
+model_provider = "custom"
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+'@
+    Write-TextFileUtf8 -Path $configPath -Content $configContent
+    Write-Log "已生成 $configPath。"
+    $createdAny = $true
+  }
+
+  if (Test-Path $authPath) {
+    Write-Log "$authPath 已存在，默认跳过。"
+  } else {
+    $authContent = @{
+      OPENAI_API_KEY = (Get-CurrentApiKey)
+    } | ConvertTo-Json
+    Write-TextFileUtf8 -Path $authPath -Content ($authContent + [Environment]::NewLine)
+    Write-Log "已生成 $authPath。"
+    $createdAny = $true
+  }
+
+  if ($createdAny) {
+    $script:Changed = $true
+  }
+}
+
+function Prompt-GenerateCodexFiles {
+  if ($NoInput) {
+    return
+  }
+
+  $reply = Read-Host '是否生成 %USERPROFILE%\.codex\config.toml 和 %USERPROFILE%\.codex\auth.json? [y/N]'
+  if ($reply -match '^(?i:y|yes)$') {
+    Write-CodexFiles
+  } else {
+    Write-Log '跳过生成 Codex 配置文件。'
+  }
+}
+
 function Show-AuthHint {
   if ($script:SessionApiKey) {
     Write-Log '如需持久化，请手动写入 PowerShell Profile:'
@@ -302,6 +382,7 @@ function Invoke-NativeBootstrap {
   }
 
   Prompt-Auth
+  Prompt-GenerateCodexFiles
   Show-Summary
   Show-AuthHint
 }

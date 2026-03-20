@@ -83,6 +83,20 @@ detect_auth() {
   return 1
 }
 
+current_api_key() {
+  if [ -n "$SESSION_API_KEY" ]; then
+    printf '%s' "$SESSION_API_KEY"
+    return 0
+  fi
+
+  if [ -n "${OPENAI_API_KEY:-}" ]; then
+    printf '%s' "${OPENAI_API_KEY}"
+    return 0
+  fi
+
+  printf '%s' ""
+}
+
 record_precheck() {
   if has_cmd node && node -v >/dev/null 2>&1; then
     PRE_NODE=1
@@ -402,6 +416,66 @@ prompt_for_auth() {
   CHANGED=1
 }
 
+write_codex_files() {
+  local codex_dir config_path auth_path api_key wrote_any
+  codex_dir="${HOME}/.codex"
+  config_path="${codex_dir}/config.toml"
+  auth_path="${codex_dir}/auth.json"
+  api_key="$(current_api_key)"
+  wrote_any=0
+
+  mkdir -p "$codex_dir"
+
+  if [ -e "$config_path" ]; then
+    log "${config_path} 已存在，默认跳过。"
+  else
+    cat >"$config_path" <<'EOF'
+model_provider = "custom"
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+EOF
+    log "已生成 ${config_path}。"
+    wrote_any=1
+  fi
+
+  if [ -e "$auth_path" ]; then
+    log "${auth_path} 已存在，默认跳过。"
+  else
+    printf '{\n  "OPENAI_API_KEY": "%s"\n}\n' "$api_key" >"$auth_path"
+    log "已生成 ${auth_path}。"
+    wrote_any=1
+  fi
+
+  if [ "$wrote_any" -eq 1 ]; then
+    CHANGED=1
+  fi
+}
+
+prompt_generate_codex_files() {
+  if [ "$NO_INPUT" -eq 1 ]; then
+    return 0
+  fi
+
+  printf '是否生成 ~/.codex/config.toml 和 ~/.codex/auth.json? [y/N]: '
+  local reply
+  IFS= read -r reply
+
+  case "$reply" in
+    y|Y|yes|YES|Yes)
+      write_codex_files
+      ;;
+    *)
+      log "跳过生成 Codex 配置文件。"
+      ;;
+  esac
+}
+
 print_auth_hint() {
   if detect_auth; then
     log "检测到当前会话已存在 OPENAI_API_KEY。"
@@ -471,6 +545,7 @@ main() {
   ensure_node
   ensure_codex
   prompt_for_auth
+  prompt_generate_codex_files
   print_summary
   print_auth_hint
 }

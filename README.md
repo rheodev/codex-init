@@ -15,6 +15,7 @@
 - Linux 优先支持 `apt`、`dnf`、`pacman`
 - Windows 默认优先 WSL，失败回退原生 PowerShell
 - API Key 只做当前会话校验，不自动写入 profile
+- 可按提示生成 `~/.codex/config.toml` 与 `auth.json`，已存在默认不覆盖
 
 ## 用法
 
@@ -50,3 +51,4 @@ Set-ExecutionPolicy -Scope Process Bypass
 - Windows 原生分支使用 `npmmirror` 下载 Node 压缩包到用户目录。
 - Linux 的 `dnf` 分支优先适配 Fedora 临时镜像；其他 RHEL 系发行版回退现有系统源。
 - 脚本不会永久修改 shell profile、npm 配置或系统软件源。
+- 仅在用户确认后生成 Codex 配置文件：macOS / Linux 为 `~/.codex/`，Windows 为 `%USERPROFILE%\.codex\`。
