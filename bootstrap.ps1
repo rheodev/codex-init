@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('auto', 'wsl', 'native')]
   [string]$Mode = 'auto',
   [switch]$NoInput,
